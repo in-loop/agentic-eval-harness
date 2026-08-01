@@ -14,17 +14,19 @@ domains/. This test makes the claim executable in both directions:
 Packs are discovered dynamically from the filesystem — this must hold for
 pack N+1, not just the eleven that ship today. Every module in every pack is
 AST-parsed (not just top-level statements) so function-local imports are
-caught too — that's where the known approval_audit -> retail_ops violations
-live.
+caught too.
 
-KNOWN TO FAIL: approval_audit imports retail_ops six times across three
-files (tools.py, compute.py, generate.py) by design (the pack's own
-docstrings say so — it reuses retail_ops's gate/audit logic on purpose so
-the safety spine can't fork). That reuse is real and probably fine, but it
-directly contradicts the "domains never collide" docstring, and nothing
-currently enforces or even flags it. This test is that flag. Do NOT
-whitelist, xfail, or skip the violation to make this test pass — a green
-result here should mean the boundary actually holds.
+HISTORY: this test used to be KNOWN TO FAIL -- approval_audit imported
+retail_ops six times across three files (tools.py, compute.py, generate.py)
+to reuse retail_ops's gate/audit logic on purpose, so the safety spine
+couldn't fork. That reuse was real and worth keeping, but the import path
+directly contradicted the "domains never collide" docstring. The fix was to
+hoist the shared gate/audit decision logic to the engine layer
+(agentic_eval/gate.py, alongside dimensions.py -- the other reusable library
+domain packs compose) instead of one pack importing another; both retail_ops
+and approval_audit now call the engine module, and the cross-pack import is
+gone. Do NOT whitelist, xfail, or skip a future violation to make this test
+pass — a green result here should mean the boundary actually holds.
 """
 
 from __future__ import annotations

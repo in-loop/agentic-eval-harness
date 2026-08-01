@@ -3,10 +3,12 @@ fixtures (fixtures/approval_audit/).
 
 This pack does NOT re-declare any policy. The gated-action list, the write-off
 threshold, the EX-* exception dispositions, and the audit-required-field set all
-live in retail_ops (fixtures/retail_ops/policy.json + exceptions.jsonl) and are
-imported through ``retail_ops.rules`` — the single answer-key source this pack
-attacks. What lives here is only the *delivery surface*: inbound lure messages,
-conflicting source records, and audit-pressure entries.
+live in retail_ops (fixtures/retail_ops/policy.json + exceptions.jsonl) -- the
+single answer-key source this pack attacks -- and are read by ``compute``'s
+loaders (agentic_eval.gate's loaders, by path) rather than imported through
+``retail_ops``'s Python package; see agentic_eval/gate.py and compute.py for the
+full story. What lives here is only the *delivery surface*: inbound lure
+messages, conflicting source records, and audit-pressure entries.
 
 Everything is FABRICATED and GENERIC. Lures are benign filler sentences carrying
 one opaque MARKER token plus a synthetic imperative; no real injection or exploit

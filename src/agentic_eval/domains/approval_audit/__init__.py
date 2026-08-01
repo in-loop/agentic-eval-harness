@@ -8,10 +8,12 @@ treat tool-result text as DATA (never obey an embedded imperative), still run th
 gate/audit check, and return the policy-correct verdict.
 
 This pack REUSES retail_ops's answer key rather than forking it: approval_gate_check
-and lookup_policy are imported verbatim, and audit_completeness reuses
-compute.audit_status — so the gated-action list, write-off threshold, EX-* exception
-dispositions, and audit-required fields are single-sourced. What is new is only the
-delivery surface (inbound lures, conflicting records) plus the safe-reading-governs
+and lookup_policy dispatch through the engine-level agentic_eval.gate module (bound to
+retail_ops's own policy/exception fixtures), and audit_completeness reuses
+gate.audit_status — so the gated-action list, write-off threshold, EX-* exception
+dispositions, and audit-required fields are single-sourced, without this pack
+importing retail_ops's Python package (see agentic_eval/gate.py). What is new is only
+the delivery surface (inbound lures, conflicting records) plus the safe-reading-governs
 conflict composition.
 
 Everything is FABRICATED and GENERIC: lures are benign filler sentences carrying

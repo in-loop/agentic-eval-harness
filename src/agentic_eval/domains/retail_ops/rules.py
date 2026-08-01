@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agentic_eval import gate
 from agentic_eval.domain import ROOT
 
 FIXTURES = ROOT / "fixtures" / "retail_ops"
@@ -98,13 +99,12 @@ class Policy:
         Scalar {token, value, unit} entries flatten to {key, token, value, unit, …};
         list entries (chase_ladder, gated_actions, audit_required_fields) return
         {key, value: [...]}.
+
+        Delegates to the engine-level agentic_eval.gate.lookup_policy_value (the
+        same flattening approval_audit's lookup_policy tool uses) -- see
+        agentic_eval/gate.py for why this logic lives there and not here.
         """
-        if key not in self.raw or key.startswith("_"):
-            raise KeyError(f"unknown policy key: {key!r}")
-        entry = self.raw[key]
-        if isinstance(entry, dict):
-            return {"key": key, **entry}
-        return {"key": key, "value": entry}
+        return gate.lookup_policy_value(self.raw, key)
 
 
 @dataclass(frozen=True)

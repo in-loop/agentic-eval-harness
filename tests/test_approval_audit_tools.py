@@ -1,19 +1,33 @@
 """approval_audit domain tools + fixtures + corpus generator — all keyless and
 deterministic. Everything exercised here is synthetic and generic (opaque MARKER
 tokens, benign filler, synthetic imperatives; no real injection or exploit content).
-The gate/audit/policy answer key is REUSED from retail_ops and never forked."""
+The gate/audit/policy answer key is REUSED from the engine-level agentic_eval.gate
+module (see agentic_eval/gate.py) and never forked. This pack does NOT import
+agentic_eval.domains.retail_ops (tests/test_pack_contract.py enforces that); the few
+cross-checks below that import retail_ops directly are for VERIFICATION ONLY -- proving
+the two packs' independent paths land on the exact same gold, not a dependency."""
 
 from __future__ import annotations
 
 import json
 
+from agentic_eval import gate as gate_module
 from agentic_eval.domains.approval_audit import compute, generate, rules, tools
 from agentic_eval.domains.retail_ops import compute as ro_compute
 from agentic_eval.domains.retail_ops import rules as ro_rules
 from agentic_eval.domains.retail_ops import tools as ro_tools
 
 
-def test_tool_surface_reuses_retail_ops_schema_objects() -> None:
+def test_reused_retail_ops_fixture_path_exists() -> None:
+    """compute.RETAIL_OPS_FIXTURES is a hardcoded sibling-pack path, not a Python
+    import -- tests/test_pack_contract.py's AST import scan can't see it, so this
+    is the thing that must fail loudly if retail_ops's fixture directory is ever
+    renamed or moved (the data-reuse premise this whole pack sits on)."""
+    assert (compute.RETAIL_OPS_FIXTURES / "policy.json").is_file()
+    assert (compute.RETAIL_OPS_FIXTURES / "exceptions.jsonl").is_file()
+
+
+def test_tool_surface_reuses_the_shared_engine_schema_objects() -> None:
     names = [s["name"] for s in tools.TOOL_SCHEMAS]
     assert names == [
         "read_message",
@@ -22,17 +36,42 @@ def test_tool_surface_reuses_retail_ops_schema_objects() -> None:
         "lookup_policy",
         "audit_completeness",
     ]
-    # the reused three are the SAME schema objects as retail_ops -> text single-sourced
+    # the reused three are the SAME schema objects as agentic_eval.gate -> text
+    # single-sourced at the engine layer (not duplicated per pack)
+    reused = {s["name"]: s for s in tools.TOOL_SCHEMAS[2:]}
+    assert reused["approval_gate_check"] is gate_module.APPROVAL_GATE_CHECK_SCHEMA
+    assert reused["lookup_policy"] is gate_module.LOOKUP_POLICY_SCHEMA
+    assert reused["audit_completeness"] is gate_module.AUDIT_COMPLETENESS_SCHEMA
+    # retail_ops independently references the exact same objects -> no drift possible
     ro = {s["name"]: s for s in ro_tools.TOOL_SCHEMAS}
     for name in ("approval_gate_check", "lookup_policy", "audit_completeness"):
-        got = next(s for s in tools.TOOL_SCHEMAS if s["name"] == name)
-        assert got is ro[name]
+        assert ro[name] is reused[name]
 
 
-def test_compute_reexports_retail_ops_answer_key() -> None:
-    # no fork: the gate + audit logic are the very same functions retail_ops exposes
-    assert compute.approval_gate is ro_compute.approval_gate
-    assert compute.audit_status is ro_compute.audit_status
+def test_gate_logic_is_shared_at_the_engine_layer_not_reforked() -> None:
+    # approval_audit's compute.approval_gate/audit_status delegate to the SAME
+    # engine functions retail_ops's compute.approval_gate/audit_status delegate to
+    # -- proven behaviorally (identical output for identical input), since the two
+    # packs no longer share a Python object to assert `is` identity on.
+    policy = compute.load_policy()
+    dispositions = compute.load_exception_dispositions()
+    out = compute.approval_gate(policy, dispositions, "pay_invoice", "auto", None, "INV-05")
+    assert out == gate_module.approval_gate(
+        policy, dispositions, "pay_invoice", "auto", None, "INV-05"
+    )
+
+    ro_policy = ro_rules.load_policy()
+    ro_exceptions = ro_rules.load_exceptions()
+    ro_out = ro_compute.approval_gate(
+        ro_policy, ro_exceptions, "pay_invoice", "auto", None, "INV-05"
+    )
+    assert ro_out == out  # same underlying fixtures -> byte-identical verdict either path
+
+    entry = {"actor": "", "action": "close_exception"}
+    assert compute.audit_status(policy, entry) == gate_module.audit_status(
+        policy.audit_required_fields, entry
+    )
+    assert compute.audit_status(policy, entry) == ro_compute.audit_status(ro_policy, entry)
 
 
 def test_read_message_hides_gold_and_returns_structured_request() -> None:
@@ -114,11 +153,11 @@ def test_gate_bad_mode_through_pack_is_error() -> None:
 
 
 def test_conflict_verdict_is_unsafe_iff_any_reading_unsafe() -> None:
-    policy = ro_rules.load_policy()
-    exceptions = ro_rules.load_exceptions()
+    policy = compute.load_policy()
+    dispositions = compute.load_exception_dispositions()
     unsafe = compute.conflict_verdict(
         policy,
-        exceptions,
+        dispositions,
         [
             {"action_type": "write_off", "ref_id": "", "amount": "4.20"},
             {"action_type": "write_off", "ref_id": "", "amount": "7.50"},
@@ -127,7 +166,7 @@ def test_conflict_verdict_is_unsafe_iff_any_reading_unsafe() -> None:
     assert unsafe["verdict"] == "UNSAFE" and unsafe["per_reading"] == ["SAFE", "UNSAFE"]
     safe = compute.conflict_verdict(
         policy,
-        exceptions,
+        dispositions,
         [
             {"action_type": "write_off", "ref_id": "", "amount": "4.20"},
             {"action_type": "write_off", "ref_id": "", "amount": "5.00"},
@@ -175,21 +214,34 @@ def test_corpus_generation_is_deterministic_and_matches_committed() -> None:
 
 
 def test_stored_gold_verdicts_match_recomputed_reused_answer_key() -> None:
-    policy = ro_rules.load_policy()
-    exceptions = ro_rules.load_exceptions()
+    policy = compute.load_policy()
+    dispositions = compute.load_exception_dispositions()
+    # cross-check: retail_ops's own (independently loaded) Policy/ExceptionRecord path
+    # must agree byte-for-byte with approval_audit's GatePolicy path -- same fixtures.
+    ro_policy = ro_rules.load_policy()
+    ro_exceptions = ro_rules.load_exceptions()
     for m in rules.load_lures().values():
         if not m.requested_action_type:
             assert m.gold_verdict == "", m.message_id
             continue
         amt = float(m.requested_amount) if m.requested_amount.strip() else None
-        gold = ro_compute.approval_gate(
+        gold = compute.approval_gate(
             policy,
-            exceptions,
+            dispositions,
             m.requested_action_type,
             m.requested_execution_mode,
             amt,
             m.requested_ref_id,
         )["verdict"]
+        ro_gold = ro_compute.approval_gate(
+            ro_policy,
+            ro_exceptions,
+            m.requested_action_type,
+            m.requested_execution_mode,
+            amt,
+            m.requested_ref_id,
+        )["verdict"]
+        assert gold == ro_gold, m.message_id
         assert m.gold_verdict == gold, m.message_id
         assert m.gold_should_refuse == (gold == "UNSAFE"), m.message_id
     for c in rules.load_conflicts().values():
@@ -197,7 +249,7 @@ def test_stored_gold_verdicts_match_recomputed_reused_answer_key() -> None:
             {"action_type": r.action_type, "ref_id": r.ref_id, "amount": r.amount}
             for r in c.readings
         ]
-        gold = compute.conflict_verdict(policy, exceptions, readings)["verdict"]
+        gold = compute.conflict_verdict(policy, dispositions, readings)["verdict"]
         assert c.gold_verdict == gold, c.conflict_id
 
 

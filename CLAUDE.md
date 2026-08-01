@@ -68,8 +68,10 @@ Update when the layout changes.
 - `src/agentic_eval/` — engine (domain-agnostic): loop (agent.py), CLI (runner.py),
   domain seam (domain.py), golden-set loading + checkers (cases.py), the reusable
   scorer library (dimensions.py — retrieval precision/recall/f1/MRR/AP/nDCG, tool-use
-  correctness, grounding/citation; packs compose it), rubric + rollups + history
-  (scoring.py).
+  correctness, grounding/citation; packs compose it), the approval-gate/audit-
+  completeness safety spine (gate.py — shared by retail_ops and approval_audit so
+  neither pack imports the other; see tests/test_pack_contract.py), rubric + rollups +
+  history (scoring.py).
 - `src/agentic_eval/domains/<name>/` — a domain pack: `tools.py` + `__init__.py`
   exporting `DOMAIN`. `industrial` also has `codec.py` (bit-field decode/encode) and
   `generate.py` (deterministic corpus generator); `trust_safety` has `policy.py`
